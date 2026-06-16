@@ -69,6 +69,18 @@ PARTNER_NAME = "RODYNNA KOVBASKA"
 PARTNER_DISPLAY = "РОДИННА КОВБАСКА"
 DATA_START = "2025-01-01"
 
+# Локації, що належать партнеру, але ще не мають group_name='RODYNNA KOVBASKA'
+# у dim_provider_v2 (правка group_name ще не доїхала до таблиці).
+# Можна прибрати після того, як dim_provider_v2 оновиться.
+EXTRA_PROVIDER_IDS = [190182]  # Родинна Ковбаска вул. Героїв Упа, 73 (Lviv)
+
+_extra_ids = ", ".join(str(i) for i in EXTRA_PROVIDER_IDS)
+GROUP_FILTER = (
+    f"(p.group_name = '{PARTNER_NAME}'"
+    + (f" OR p.provider_id IN ({_extra_ids})" if EXTRA_PROVIDER_IDS else "")
+    + ")"
+)
+
 TEMPLATE_PATH = _ROOT / "template.html"
 OUTPUT_PATH = _ROOT / "index.html"
 DATA_PATH = _ROOT / "report_data.json"
@@ -411,6 +423,28 @@ GROUP BY 1
 ORDER BY 1
 """
 
+STORE_ACTIVITY_WEEKLY = f"""
+SELECT
+    DATE_FORMAT(f.metric_timestamp_local, 'yyyy-MM-dd') AS week,
+    p.provider_id,
+    p.provider_name,
+    p.city_name,
+    ROUND(SUM(f.provider_acceptance_rate_value * f.provider_acceptance_rate_weight)
+        / NULLIF(SUM(f.provider_acceptance_rate_weight), 0) * 100, 1) AS acceptance_rate,
+    ROUND(SUM(f.provider_active_rate_value * f.provider_active_rate_weight)
+        / NULLIF(SUM(f.provider_active_rate_weight), 0) * 100, 1) AS availability_rate
+FROM hive_metastore.ng_delivery_spark.fact_provider_weekly f
+    JOIN hive_metastore.ng_delivery_spark.dim_provider_v2 p ON f.provider_id = p.provider_id
+WHERE p.country_code = 'ua'
+  AND {GROUP_FILTER}
+  AND lower(p.provider_name) <> 'deleted'
+  AND f.metric_timestamp_local >= '{WEEKLY_START}'
+  AND f.metric_timestamp_local <= '{WEEKLY_END}'
+GROUP BY 1, 2, 3, 4
+ORDER BY 3, 1
+LIMIT 5000
+"""
+
 TOP_STORES_LAST_MONTH = f"""
 SELECT
     f.provider_name,
@@ -507,6 +541,9 @@ def main():
     aa_m = to_serializable(run_query(cursor, ACCEPTANCE_AVAILABILITY_MONTHLY))
     aa_w = to_serializable(run_query(cursor, ACCEPTANCE_AVAILABILITY_WEEKLY))
 
+    print("Fetching per-store weekly activity...")
+    store_activity = to_serializable(run_query(cursor, STORE_ACTIVITY_WEEKLY))
+
     print("Fetching top stores...")
     top_stores = to_serializable(run_query(cursor, TOP_STORES_LAST_MONTH))
 
@@ -544,6 +581,7 @@ def main():
             "acceptance_availability": aa_w,
         },
         "acceptance_current": aa_current,
+        "store_activity": store_activity,
         "top_stores": top_stores,
         "network": {
             "summary": net_summary[0] if net_summary else {},
