@@ -153,6 +153,8 @@ def _week_boundaries():
 
 DATA_END = _data_end()
 WEEKLY_START, WEEKLY_END = _week_boundaries()
+LAST_MONTH_START = DATA_END[:8] + "01"
+LAST_MONTH_END = DATA_END
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +330,122 @@ WHERE p.country_code = 'ua'
   AND f.order_state != 'delivered'
 GROUP BY 1, r.reason, r.actor_type
 ORDER BY 1, cnt DESC
+"""
+
+FAILED_STATES_LAST_MONTH = f"""
+SELECT
+    f.order_state,
+    COUNT(*) AS cnt
+FROM main.ng_delivery.fact_order_delivery f
+    JOIN main.ng_delivery.dim_provider_v2 p ON f.provider_id = p.provider_id
+WHERE p.country_code = 'ua'
+  AND {GROUP_FILTER}
+  AND f.order_created_date >= '{LAST_MONTH_START}'
+  AND f.order_created_date <= '{LAST_MONTH_END}'
+GROUP BY 1
+ORDER BY cnt DESC
+LIMIT 20
+"""
+
+FAILED_BY_STORE_LAST_MONTH = f"""
+SELECT
+    f.provider_id,
+    COALESCE(f.provider_name, p.provider_name) AS store,
+    COALESCE(f.city_name, p.city_name) AS city,
+    COUNT(*) AS placed,
+    SUM(CASE WHEN f.order_state = 'delivered' THEN 1 ELSE 0 END) AS delivered,
+    SUM(CASE WHEN f.order_state != 'delivered' THEN 1 ELSE 0 END) AS failed,
+    SUM(CASE WHEN f.order_state = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+    ROUND(SUM(CASE WHEN f.order_state != 'delivered' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100, 1) AS fail_pct
+FROM main.ng_delivery.fact_order_delivery f
+    JOIN main.ng_delivery.dim_provider_v2 p ON f.provider_id = p.provider_id
+WHERE p.country_code = 'ua'
+  AND {GROUP_FILTER}
+  AND f.order_created_date >= '{LAST_MONTH_START}'
+  AND f.order_created_date <= '{LAST_MONTH_END}'
+GROUP BY 1, 2, 3
+ORDER BY failed DESC, fail_pct DESC
+LIMIT 500
+"""
+
+FAILED_STORE_REASONS_LAST_MONTH = f"""
+SELECT
+    COALESCE(f.provider_name, p.provider_name) AS store,
+    COALESCE(f.city_name, p.city_name) AS city,
+    r.reason,
+    COUNT(*) AS cnt
+FROM main.ng_delivery.delivery_order_order_resolution r
+    JOIN main.ng_delivery.fact_order_delivery f ON r.order_id = f.order_id
+    JOIN main.ng_delivery.dim_provider_v2 p ON f.provider_id = p.provider_id
+WHERE p.country_code = 'ua'
+  AND {GROUP_FILTER}
+  AND f.order_created_date >= '{LAST_MONTH_START}'
+  AND f.order_created_date <= '{LAST_MONTH_END}'
+  AND f.order_state != 'delivered'
+GROUP BY 1, 2, 3
+ORDER BY cnt DESC
+LIMIT 500
+"""
+
+FAILED_BY_CITY_LAST_MONTH = f"""
+SELECT
+    COALESCE(f.city_name, p.city_name) AS city,
+    COUNT(*) AS placed,
+    SUM(CASE WHEN f.order_state = 'delivered' THEN 1 ELSE 0 END) AS delivered,
+    SUM(CASE WHEN f.order_state != 'delivered' THEN 1 ELSE 0 END) AS failed,
+    ROUND(SUM(CASE WHEN f.order_state != 'delivered' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100, 1) AS fail_pct
+FROM main.ng_delivery.fact_order_delivery f
+    JOIN main.ng_delivery.dim_provider_v2 p ON f.provider_id = p.provider_id
+WHERE p.country_code = 'ua'
+  AND {GROUP_FILTER}
+  AND f.order_created_date >= '{LAST_MONTH_START}'
+  AND f.order_created_date <= '{LAST_MONTH_END}'
+GROUP BY 1
+ORDER BY failed DESC
+LIMIT 50
+"""
+
+FAILED_BY_HOUR_LAST_MONTH = f"""
+SELECT
+    HOUR(f.order_created_at_local) AS hour_local,
+    COUNT(*) AS placed,
+    SUM(CASE WHEN f.order_state != 'delivered' THEN 1 ELSE 0 END) AS failed,
+    ROUND(SUM(CASE WHEN f.order_state != 'delivered' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100, 1) AS fail_pct
+FROM main.ng_delivery.fact_order_delivery f
+    JOIN main.ng_delivery.dim_provider_v2 p ON f.provider_id = p.provider_id
+WHERE p.country_code = 'ua'
+  AND {GROUP_FILTER}
+  AND f.order_created_date >= '{LAST_MONTH_START}'
+  AND f.order_created_date <= '{LAST_MONTH_END}'
+GROUP BY 1
+ORDER BY 1
+LIMIT 24
+"""
+
+FAILED_CS_COMMENTS_LAST_MONTH = f"""
+SELECT
+    CASE
+        WHEN LOWER(COALESCE(r.comment, '')) LIKE '%out of stock%' THEN 'Заклад просить скасувати: немає товару'
+        WHEN LOWER(COALESCE(r.comment, '')) LIKE '%integration%' THEN 'Проблема інтеграції / замовлення не збирається'
+        WHEN LOWER(COALESCE(r.comment, '')) LIKE '%did not answer%'
+          OR LOWER(COALESCE(r.comment, '')) LIKE '%not answer%' THEN 'Курʼєр: заклад не відповідає'
+        WHEN LOWER(COALESCE(r.comment, '')) LIKE '%no reason%' THEN 'Заклад просить скасувати без причини'
+        WHEN LOWER(COALESCE(r.comment, '')) LIKE '%manually failed by user%' THEN 'Клієнт скасував у застосунку'
+        WHEN r.comment IS NULL OR TRIM(r.comment) = '' THEN 'Без коментаря (планшет / автопричина)'
+        ELSE 'Інший коментар CS'
+    END AS comment_group,
+    COUNT(*) AS cnt
+FROM main.ng_delivery.delivery_order_order_resolution r
+    JOIN main.ng_delivery.fact_order_delivery f ON r.order_id = f.order_id
+    JOIN main.ng_delivery.dim_provider_v2 p ON f.provider_id = p.provider_id
+WHERE p.country_code = 'ua'
+  AND {GROUP_FILTER}
+  AND f.order_created_date >= '{LAST_MONTH_START}'
+  AND f.order_created_date <= '{LAST_MONTH_END}'
+  AND f.order_state != 'delivered'
+GROUP BY 1
+ORDER BY cnt DESC
+LIMIT 20
 """
 
 CAMPAIGNS_MONTHLY = f"""
@@ -529,6 +647,14 @@ def main():
     fail_reasons_m = to_serializable(run_query(cursor, FAILED_REASONS_MONTHLY))
     fail_reasons_w = to_serializable(run_query(cursor, FAILED_REASONS_WEEKLY))
 
+    print("Fetching failed-order diagnosis (last month)...")
+    fail_states = to_serializable(run_query(cursor, FAILED_STATES_LAST_MONTH))
+    fail_by_store = to_serializable(run_query(cursor, FAILED_BY_STORE_LAST_MONTH))
+    fail_store_reasons = to_serializable(run_query(cursor, FAILED_STORE_REASONS_LAST_MONTH))
+    fail_by_city = to_serializable(run_query(cursor, FAILED_BY_CITY_LAST_MONTH))
+    fail_by_hour = to_serializable(run_query(cursor, FAILED_BY_HOUR_LAST_MONTH))
+    fail_cs_comments = to_serializable(run_query(cursor, FAILED_CS_COMMENTS_LAST_MONTH))
+
     print("Fetching campaign data...")
     camp_m = to_serializable(run_query(cursor, CAMPAIGNS_MONTHLY))
     camp_w = to_serializable(run_query(cursor, CAMPAIGNS_WEEKLY))
@@ -580,6 +706,17 @@ def main():
         "acceptance_current": aa_current,
         "store_activity": store_activity,
         "top_stores": top_stores,
+        "failed_diagnosis": {
+            "period": LAST_MONTH_START[:7],
+            "period_start": LAST_MONTH_START,
+            "period_end": LAST_MONTH_END,
+            "by_state": fail_states,
+            "by_store": fail_by_store,
+            "store_reasons": fail_store_reasons,
+            "by_city": fail_by_city,
+            "by_hour": fail_by_hour,
+            "cs_comments": fail_cs_comments,
+        },
         "network": {
             "summary": net_summary[0] if net_summary else {},
             "activation": net_activation,
