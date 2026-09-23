@@ -93,6 +93,7 @@ tr:hover{background:#f9fafb}
 <div class="tab-nav">
   <button class="tab-btn active" data-tab="monthly">Місячні дані</button>
   <button class="tab-btn" data-tab="weekly">Тижневі дані</button>
+  <button class="tab-btn" data-tab="failed">Невдалі замовлення</button>
   <button class="tab-btn" data-tab="activity">Активність локацій</button>
 </div>
 
@@ -165,38 +166,6 @@ tr:hover{background:#f9fafb}
   <div class="card" style="margin-top:14px">
     <h3>Зведена таблиця операційних показників</h3>
     <div style="overflow-x:auto"><table id="m-ops-table"></table></div>
-  </div>
-</div>
-
-<div class="divider"></div>
-
-<!-- 3. FAILED ORDERS ANALYSIS -->
-<div class="section" id="m-failed">
-  <h2>3. Аналіз невдалих замовлень — причини і що виправити</h2>
-  <div id="m-fail-diagnosis"></div>
-  <div class="grid-4" id="m-fail-reason-kpis" style="margin:14px 0"></div>
-  <div class="grid-2">
-    <div class="card"><h3>Невдалі замовлення за причинами</h3><div class="chart-box-lg"><canvas id="m-cFailReasons"></canvas></div></div>
-    <div class="card"><h3>Динаміка частки невдалих, %</h3><div class="chart-box-lg"><canvas id="m-cFailRate"></canvas></div></div>
-  </div>
-  <div class="grid-2" style="margin-top:14px">
-    <div class="card"><h3>Невдалі за годиною доби (останній місяць)</h3><div class="chart-box"><canvas id="m-cFailHour"></canvas></div></div>
-    <div class="card">
-      <h3>Міста (останній місяць)</h3>
-      <div style="overflow-x:auto"><table id="m-fail-city-table"></table></div>
-    </div>
-  </div>
-  <div class="card" style="margin-top:14px">
-    <h3>Деталізація невдалих замовлень за причинами</h3>
-    <div style="overflow-x:auto"><table id="m-fail-table"></table></div>
-  </div>
-  <div class="card" style="margin-top:14px">
-    <h3>Локації з найбільшою кількістю невдалих (останній місяць)</h3>
-    <div style="overflow-x:auto"><table id="m-fail-store-table"></table></div>
-  </div>
-  <div class="card" style="margin-top:14px">
-    <h3>Що треба виправити (план дій)</h3>
-    <div id="m-fail-actions"></div>
   </div>
 </div>
 
@@ -276,19 +245,55 @@ tr:hover{background:#f9fafb}
   </div>
 </div>
 
-<div class="divider"></div>
 
-<!-- 3. FAILED ORDERS -->
-<div class="section">
-  <h2>3. Аналіз невдалих замовлень</h2>
+</div><!-- end weekly tab -->
+
+
+<!-- ═══════════════════════════════════════ -->
+<!-- FAILED ORDERS TAB -->
+<!-- ═══════════════════════════════════════ -->
+<div class="tab-content" id="tab-failed">
+
+<div class="section" id="m-failed">
+  <h2>Аналіз невдалих замовлень — причини і що виправити</h2>
+  <div id="m-fail-diagnosis"></div>
+  <div class="grid-4" id="m-fail-reason-kpis" style="margin:14px 0"></div>
   <div class="grid-2">
-    <div class="card"><h3>Невдалі замовлення за причинами</h3><div class="chart-box-lg"><canvas id="w-cFailReasons"></canvas></div></div>
-    <div class="card"><h3>Динаміка частки невдалих, %</h3><div class="chart-box-lg"><canvas id="w-cFailRate"></canvas></div></div>
+    <div class="card"><h3>Невдалі замовлення за причинами (місяці)</h3><div class="chart-box-lg"><canvas id="m-cFailReasons"></canvas></div></div>
+    <div class="card"><h3>Динаміка частки невдалих, % (місяці)</h3><div class="chart-box-lg"><canvas id="m-cFailRate"></canvas></div></div>
+  </div>
+  <div class="grid-2" style="margin-top:14px">
+    <div class="card"><h3>Невдалі за годиною доби (останній місяць)</h3><div class="chart-box"><canvas id="m-cFailHour"></canvas></div></div>
+    <div class="card">
+      <h3>Міста (останній місяць)</h3>
+      <div style="overflow-x:auto"><table id="m-fail-city-table"></table></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>Деталізація невдалих замовлень за причинами</h3>
+    <div style="overflow-x:auto"><table id="m-fail-table"></table></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>Локації з найбільшою кількістю невдалих (останній місяць)</h3>
+    <div style="overflow-x:auto"><table id="m-fail-store-table"></table></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>Що треба виправити (план дій)</h3>
+    <div id="m-fail-actions"></div>
   </div>
 </div>
 
+<div class="divider"></div>
 
-</div><!-- end weekly tab -->
+<div class="section">
+  <h2>Тижнева динаміка</h2>
+  <div class="grid-2">
+    <div class="card"><h3>Невдалі замовлення за причинами (тижні)</h3><div class="chart-box-lg"><canvas id="w-cFailReasons"></canvas></div></div>
+    <div class="card"><h3>Динаміка частки невдалих, % (тижні)</h3><div class="chart-box-lg"><canvas id="w-cFailRate"></canvas></div></div>
+  </div>
+</div>
+
+</div><!-- end failed tab -->
 
 
 <!-- ═══════════════════════════════════════ -->
@@ -494,6 +499,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    requestAnimationFrame(() => {
+      document.querySelectorAll('#tab-' + btn.dataset.tab + ' canvas').forEach(c => {
+        const ch = Chart.getChart(c);
+        if (ch) ch.resize();
+      });
+    });
   });
 });
 
