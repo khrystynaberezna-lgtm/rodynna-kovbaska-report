@@ -822,17 +822,17 @@ renderCharts('m', mData, shortMonth);
     const deltaTxt = prev ? (delta >= 0 ? `+${n(delta,1)} п.п.` : `${n(delta,1)} п.п.`) + ` vs ${shortMonth(prev.period)}` : '';
     box.innerHTML = `
       <div class="insight warn">
-        <div class="insight-title">Головний висновок: ${pct(failPct)} невдалих у ${shortMonth(period)} — це операційна відмова мережі, не клієнти</div>
+        <div class="insight-title">Головний висновок: ${pct(failPct)} невдалих у ${shortMonth(period)} — переважно з боку закладів, не клієнтів</div>
         <div class="insight-text">
-          З <b>${fmt(placed)}</b> розміщених замовлень доставлено лише <b>${fmt(delivered)}</b>, невдалих <b>${fmt(failed)}</b>.
-          ${rejected ? `Статуси: rejected ${fmt(rejected)}, failed ${fmt(failedState)}.` : ''}
+          З <b>${fmt(placed)}</b> розміщених замовлень доставлено <b>${fmt(delivered)}</b>, невдалих — <b>${fmt(failed)}</b>.
+          ${rejected ? `З них відхилено закладом: ${fmt(rejected)}, скасовано після прийняття: ${fmt(failedState)}.` : ''}
           <b>${n(share(noReply),0)}%</b> невдалих — заклад не відповів на планшеті,
-          <b>${n(share(oos),0)}%</b> — немає товару,
-          CS через заклад — <b>${n(share(csProv),0)}%</b>,
-          скасування клієнтом лише <b>${n(share(userCancel),0)}%</b>.
-          Близько <b>${n(merchantShare,0)}%</b> втрат можна віднести на сторону партнера.
+          <b>${n(share(oos),0)}%</b> — немає товару в наявності,
+          скасовано підтримкою на запит закладу — <b>${n(share(csProv),0)}%</b>,
+          скасування клієнтом — лише <b>${n(share(userCancel),0)}%</b>.
+          Близько <b>${n(merchantShare,0)}%</b> втрат повʼязані з роботою точок.
           ${deltaTxt ? 'Зміна: ' + deltaTxt + '.' : ''}
-          Норма для grocery на Bolt Food — failed &lt; 8%. Поки метрика вище 10%, DF купує скасування, а не продажі.
+          Орієнтир якості на платформі — частка невдалих нижче 8%.
         </div>
       </div>`;
   }
@@ -842,7 +842,7 @@ renderCharts('m', mData, shortMonth);
     const cards = [
       {label:'Не відповіли', value: fmt(noReply), sub: n(share(noReply),0)+'% невдалих', color:'#7c3aed'},
       {label:'Немає товару', value: fmt(oos), sub: n(share(oos),0)+'% невдалих', color:'#0d9488'},
-      {label:'CS — заклад', value: fmt(csProv), sub: n(share(csProv),0)+'% невдалих', color:'#dc2626'},
+      {label:'Скасовано підтримкою', value: fmt(csProv), sub: n(share(csProv),0)+'% невдалих', color:'#dc2626'},
       {label:'Клієнт скасував', value: fmt(userCancel), sub: n(share(userCancel),0)+'% невдалих', color:'#6b7280'},
     ];
     kpisEl.innerHTML = cards.map(c =>
@@ -894,34 +894,30 @@ renderCharts('m', mData, shortMonth);
   const actions = document.getElementById('m-fail-actions');
   if (actions) {
     const names = criticalStores.map(s => `${s.store} (${s.city}, ${pct(s.fail_pct)})`).slice(0,8);
-    const comments = (diag.cs_comments || []).filter(c => (c.comment_group||'').indexOf('Без коментаря') === -1);
-    const commentTxt = comments.length
-      ? comments.map(c => `${c.comment_group}: ${fmt(c.cnt)}`).join('; ')
-      : 'коментарі CS переважно порожні — причини йдуть з планшета (не відповів / немає товару)';
     actions.innerHTML = `
       <div class="insight action">
-        <div class="insight-title">1. Планшет і прийняття замовлень (головний важіль)</div>
-        <div class="insight-text">Більше половини невдалих — <b>did not respond</b>. Персонал не бере замовлення з планшета. Потрібен SLA: прийняти або відхилити за 60–90 секунд; звук/вібрація планшета; відповідальний на зміні. Поки acceptance &lt; 90%, точку не варто гріти кампаніями.</div>
+        <div class="insight-title">1. Прийняття замовлень на планшеті</div>
+        <div class="insight-text">Більше половини невдалих виникають тому, що заклад не відповідає на нове замовлення. Рекомендуємо призначити відповідального на кожній зміні, увімкнути звукові сповіщення на планшеті та приймати або відхиляти замовлення протягом 1–1,5 хвилини. Цільовий рівень прийняття — від 90%.</div>
       </div>
       <div class="insight action">
-        <div class="insight-title">2. Стоки та меню</div>
-        <div class="insight-text">Друга причина — <b>items out of stock</b> (${fmt(oos)} у ${shortMonth(period)}). Плюс частина CS-кейсів: «provider asked to cancel — item out of stock». Прибрати з меню позиції, яких немає; оновлювати стоки щодня; увімкнути replacements замість скасування всього замовлення.</div>
+        <div class="insight-title">2. Наявність товарів у меню</div>
+        <div class="insight-text">Друга причина — позиції, яких немає в магазині (${fmt(oos)} замовлень у ${shortMonth(period)}). Частина звернень у підтримку також повʼязана з тим, що заклад просив скасувати замовлення через відсутність товару. Рекомендуємо щодня оновлювати залишки, приховувати відсутні позиції в меню та пропонувати заміну замість скасування всього замовлення.</div>
       </div>
       <div class="insight action">
-        <div class="insight-title">3. Години роботи</div>
-        <div class="insight-text">${latePlaced ? `Після 21:00 і рано вранці розміщено ${fmt(latePlaced)} замовлень, з них невдалих ${fmt(lateFailed)} (${latePlaced?pct(lateFailed/latePlaced*100):'—'}).` : ''} Заклад світиться в апці, коли персонал уже не обслуговує доставку. Звірити графік у кабінеті з реальною зміною; закривати прийом за 30–45 хв до кінця зміни.</div>
+        <div class="insight-title">3. Години роботи в застосунку</div>
+        <div class="insight-text">${latePlaced ? `Після 21:00 і рано вранці клієнти розмістили ${fmt(latePlaced)} замовлень, з них невдалих ${fmt(lateFailed)} (${latePlaced?pct(lateFailed/latePlaced*100):'—'}). ` : ''}Заклад залишається видимим у застосунку, коли персонал уже не збирає доставку. Варто звірити графік у кабінеті з реальною зміною та зупиняти прийом за 30–45 хвилин до закриття.</div>
       </div>
       <div class="insight warn">
-        <div class="insight-title">4. Приховати критичні локації, поки не навчені</div>
-        <div class="insight-text">${names.length ? 'Зараз майже не доставляють: <b>' + names.join('; ') + '</b>. ' : ''}Зняти з видачі або поставити offline, поки acceptance не буде ≥90% протягом 7 днів. ${worstCity ? 'Найгірше місто: <b>' + worstCity.city + ' (' + pct(worstCity.fail_pct) + ')</b>.' : ''}</div>
+        <div class="insight-title">4. Локації, які зараз майже не доставляють</div>
+        <div class="insight-text">${names.length ? 'На цих точках більшість замовлень не доходить до клієнта: <b>' + names.join('; ') + '</b>. ' : ''}Рекомендуємо тимчасово призупинити прийом, провести навчання персоналу і повернути точку в роботу, коли прийняття буде стабільно від 90% протягом тижня. ${worstCity ? 'Окремої уваги потребує <b>' + worstCity.city + '</b> — зараз невдалих ' + pct(worstCity.fail_pct) + '.' : ''}</div>
       </div>
       <div class="insight">
-        <div class="insight-title">5. Не крутити DF, поки failed ≥ 10%</div>
-        <div class="insight-text">У серпні попит зріс (розміщені замовлення ×3 vs липень), але мережа не встигала приймати. Субсидія зараз масштабує відмови. Після failed &lt; 8% і acceptance ≥ 95% на ключових точках — можна повертати промо.</div>
+        <div class="insight-title">5. Спочатку стабільна робота точок, потім ріст попиту</div>
+        <div class="insight-text">У серпні кількість розміщених замовлень зросла майже втричі порівняно з липнем, але частина мережі не встигала їх обслуговувати. Коли частка невдалих знизиться нижче 8–10%, акції та знижки конвертуватимуться в доставлені замовлення, а не в скасування.</div>
       </div>
       <div class="insight good">
-        <div class="insight-title">Орієнтири «як має бути»</div>
-        <div class="insight-text">Робочі точки вже є: Інститутська 14 (Хмельницький), Стрийська 59 (Львів), Коцюбинського 37 (Вінниця) тримають failed ближче до 20–30%. Їхній процес (хто бере планшет, як оновлюють стоки) варто розкатати на решту мережі. Коментарі CS: ${commentTxt}.</div>
+        <div class="insight-title">Орієнтири всередині мережі</div>
+        <div class="insight-text">Уже є точки з кращою якістю: Інститутська 14 (Хмельницький), Стрийська 59 (Львів), Коцюбинського 37 (Вінниця) — частка невдалих близько 20–30%. Їхній підхід (хто відповідає за планшет і як оновлюють наявність товарів) варто поширити на решту локацій.</div>
       </div>`;
   }
 })();
