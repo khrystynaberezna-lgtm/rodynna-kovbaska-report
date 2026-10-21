@@ -453,40 +453,23 @@ LIMIT 20
 
 EVENING_BY_STORE_HOUR_LAST_MONTH = f"""
 SELECT
-    store,
-    city,
-    hour_local,
-    COUNT(*) AS placed,
-    SUM(CASE WHEN order_state != 'delivered' THEN 1 ELSE 0 END) AS failed,
-    SUM(not_accepted) AS not_accepted,
-    SUM(out_of_stock) AS out_of_stock,
-    SUM(closed_cnt) AS closed_cnt
-FROM (
-    SELECT
-        f.order_id,
-        COALESCE(f.provider_name, p.provider_name) AS store,
-        COALESCE(f.city_name, p.city_name) AS city,
-        HOUR(f.order_created_at_local) AS hour_local,
-        f.order_state,
-        MAX(CASE WHEN r.reason = 'did_not_respond' THEN 1 ELSE 0 END) AS not_accepted,
-        MAX(CASE WHEN r.reason = 'items_out_of_stock' THEN 1 ELSE 0 END) AS out_of_stock,
-        MAX(CASE WHEN r.reason = 'closed' THEN 1 ELSE 0 END) AS closed_cnt
-    FROM main.ng_delivery.fact_order_delivery f
-        JOIN main.ng_delivery.dim_provider_v2 p ON f.provider_id = p.provider_id
-        LEFT JOIN main.ng_delivery.delivery_order_order_resolution r ON r.order_id = f.order_id
-    WHERE p.country_code = 'ua'
-      AND {GROUP_FILTER}
-      AND f.order_created_date >= '{LAST_MONTH_START}'
-      AND f.order_created_date <= '{LAST_MONTH_END}'
-      AND HOUR(f.order_created_at_local) >= {EVENING_FROM_HOUR}
-    GROUP BY f.order_id,
-        COALESCE(f.provider_name, p.provider_name),
-        COALESCE(f.city_name, p.city_name),
-        HOUR(f.order_created_at_local),
-        f.order_state
-) orders
-GROUP BY store, city, hour_local
-ORDER BY not_accepted DESC, failed DESC, hour_local
+    COALESCE(f.provider_name, p.provider_name) AS store,
+    COALESCE(f.city_name, p.city_name) AS city,
+    HOUR(f.order_created_at_local) AS hour_local,
+    COUNT(DISTINCT f.order_id) AS not_accepted
+FROM main.ng_delivery.fact_order_delivery f
+    JOIN main.ng_delivery.dim_provider_v2 p ON f.provider_id = p.provider_id
+    JOIN main.ng_delivery.delivery_order_order_resolution r ON r.order_id = f.order_id
+WHERE p.country_code = 'ua'
+  AND {GROUP_FILTER}
+  AND f.order_created_date >= '{LAST_MONTH_START}'
+  AND f.order_created_date <= '{LAST_MONTH_END}'
+  AND HOUR(f.order_created_at_local) >= {EVENING_FROM_HOUR}
+  AND f.order_state != 'delivered'
+  AND r.reason = 'did_not_respond'
+  AND r.actor_type = 'provider'
+GROUP BY 1, 2, 3
+ORDER BY not_accepted DESC, hour_local
 LIMIT 500
 """
 

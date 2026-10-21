@@ -313,8 +313,8 @@ tr:hover{background:#f9fafb}
   <div class="divider"></div>
 
   <div class="section">
-    <h2>Втрачені замовлення за вечірніми слотами</h2>
-    <div class="card"><h3 id="e-chart-title">Розміщені і втрачені за годиною</h3><div class="chart-box"><canvas id="e-cHour"></canvas></div></div>
+    <h2>Години, коли заклад не відповів</h2>
+    <div class="card"><h3 id="e-chart-title">Не прийняті закладом за годиною</h3><div class="chart-box"><canvas id="e-cHour"></canvas></div></div>
   </div>
 
   <div class="divider"></div>
@@ -328,14 +328,9 @@ tr:hover{background:#f9fafb}
 
   <div class="section">
     <h2>Слоти по локаціях</h2>
-    <div class="legend">
-      <span><span class="tier" style="background:#dc2626"></span><b>Не прийнято</b> — заклад не відповів</span>
-      <span><span class="tier" style="background:#f97316"></span><b>Втрачене</b> з іншої причини</span>
-      <span><span class="tier" style="background:#34D186"></span><b>Доставлене</b></span>
-    </div>
     <div class="card" style="overflow-x:auto"><table class="act-table" id="e-slot-table"></table></div>
     <div class="insight" style="margin-top:12px">
-      <div class="insight-text">У комірці: втрачені / розміщені. Під числом — скільки з них заклад не прийняв (не відповів на планшеті).</div>
+      <div class="insight-text">Число в комірці — скільки замовлень у цей слот заклад не прийняв: не відповів на планшет. Скасування клієнтом, відсутність товару та інші причини тут не показані.</div>
     </div>
   </div>
 
@@ -1164,10 +1159,10 @@ if (wData.length) {
   document.getElementById('a-table').innerHTML = html;
 })();
 
-// ─── Evening tab: stores that miss orders from 17:00 ───
+// ─── Evening tab: provider did not accept (did_not_respond) from 17:00 ───
 {
   const ev = D.evening || {};
-  const rows = ev.by_store_hour || [];
+  const rows = (ev.by_store_hour || []).filter(r => Number(r.not_accepted || 0) > 0);
   const fromHour = Number(ev.from_hour || 17);
   const periodLabel = ev.period ? shortMonth(ev.period) : 'останній місяць';
   const title = document.getElementById('e-title');
@@ -1181,39 +1176,30 @@ if (wData.length) {
     byStore.get(key).hours.push(r);
   }
   const stores = [...byStore.values()].map(s => {
-    const sum = (k) => s.hours.reduce((a, h) => a + Number(h[k] || 0), 0);
-    s.placed = sum('placed');
-    s.failed = sum('failed');
-    s.notAccepted = sum('not_accepted');
-    s.oos = sum('out_of_stock');
-    s.failPct = s.placed ? s.failed / s.placed * 100 : 0;
+    s.notAccepted = s.hours.reduce((a, h) => a + Number(h.not_accepted || 0), 0);
     return s;
-  }).filter(s => s.failed > 0)
-    .sort((a, b) => b.notAccepted - a.notAccepted || b.failed - a.failed || b.failPct - a.failPct);
+  }).sort((a, b) => b.notAccepted - a.notAccepted || a.store.localeCompare(b.store, 'uk'));
 
   const hoursPresent = [...new Set(rows.map(r => Number(r.hour_local)))].sort((a, b) => a - b);
-  const placedAll = rows.reduce((a, r) => a + Number(r.placed || 0), 0);
-  const failedAll = rows.reduce((a, r) => a + Number(r.failed || 0), 0);
-  const notAll = rows.reduce((a, r) => a + Number(r.not_accepted || 0), 0);
-  const notStores = stores.filter(s => s.notAccepted > 0).length;
+  const notAll = stores.reduce((a, s) => a + s.notAccepted, 0);
 
   const note = document.getElementById('e-note');
   if (note) {
-    const slotTxt = hoursPresent.length ? hoursPresent.map(hourLabel).join(', ') : 'немає';
+    const slotTxt = hoursPresent.length ? hoursPresent.map(hourLabel).join(', ') : 'таких слотів не було';
     note.innerHTML = `<b>Вечірній слот</b> — з ${hourLabel(fromHour)} локального часу за ${periodLabel}. `
-      + `У цьому місяці замовлення були в слотах: <b>${slotTxt}</b>. `
-      + `<b>Не прийнято</b> — причина did not respond: заклад не відповів на нове замовлення. `
-      + `<b>Втрачене</b> — будь-яке замовлення, яке не доїхало до клієнта, включно з відсутністю товару.`;
+      + `Тут лише замовлення, які заклад не прийняв: не відповів на планшет (did not respond, сторона закладу). `
+      + `Слоти, де це сталось: <b>${slotTxt}</b>. `
+      + `Скасування клієнтом, відсутність товару та інші причини дивіться у вкладці «Невдалі замовлення».`;
   }
 
   const kpis = [
-    {label: 'Локацій із втратами', value: String(stores.length), color: stores.length ? 'var(--red)' : 'var(--green)'},
-    {label: 'Локацій без відповіді', value: String(notStores), sub: 'хоча б одне «не відповів»', color: notStores ? 'var(--red)' : 'var(--green)'},
-    {label: 'Не прийнято замовлень', value: fmt(notAll), sub: `із ${fmt(failedAll)} втрачених`, color: 'var(--orange)'},
-    {label: 'Втрачені з ' + hourLabel(fromHour), value: fmt(failedAll), sub: `із ${fmt(placedAll)} розміщених · ${placedAll ? pct(failedAll / placedAll * 100) : '—'}`, color: 'var(--red)'},
+    {label: 'Локацій, що ігнорували планшет', value: String(stores.length), color: stores.length ? 'var(--red)' : 'var(--green)'},
+    {label: 'Не прийнято замовлень', value: fmt(notAll), sub: 'заклад не відповів', color: notAll ? 'var(--red)' : 'var(--green)'},
+    {label: 'Слотів із ігноруванням', value: String(hoursPresent.length), sub: hoursPresent.length ? hoursPresent.map(hourLabel).join(', ') : 'немає', color: hoursPresent.length ? 'var(--orange)' : 'var(--green)'},
   ];
   const kpiHost = document.getElementById('e-kpi-cards');
   if (kpiHost) {
+    kpiHost.className = 'grid-3';
     kpiHost.innerHTML = kpis.map(k =>
       `<div class="card kpi"><div class="kpi-label">${k.label}</div>`
       + `<div class="kpi-value" style="color:${k.color}">${k.value}</div>`
@@ -1222,38 +1208,33 @@ if (wData.length) {
   }
 
   const chartTitle = document.getElementById('e-chart-title');
-  if (chartTitle) chartTitle.textContent = `Розміщені і втрачені за годиною · ${periodLabel}`;
+  if (chartTitle) chartTitle.textContent = `Не прийняті закладом за годиною · ${periodLabel}`;
   const hourCanvas = document.getElementById('e-cHour');
   if (hourCanvas && hoursPresent.length) {
     const byHour = h => rows.filter(r => Number(r.hour_local) === h);
     new Chart(hourCanvas, {type:'bar', data:{
       labels: hoursPresent.map(hourLabel),
       datasets:[
-        {label:'Розміщені', data: hoursPresent.map(h => byHour(h).reduce((a,r)=>a+Number(r.placed||0),0)), backgroundColor:'rgba(52,209,134,0.45)', borderRadius:3},
-        {label:'Втрачені', data: hoursPresent.map(h => byHour(h).reduce((a,r)=>a+Number(r.failed||0),0)), backgroundColor:'#dc2626', borderRadius:3},
-        {label:'Не прийнято', data: hoursPresent.map(h => byHour(h).reduce((a,r)=>a+Number(r.not_accepted||0),0)), backgroundColor:'#ea580c', borderRadius:3}
+        {label:'Не прийнято закладом', data: hoursPresent.map(h => byHour(h).reduce((a,r)=>a+Number(r.not_accepted||0),0)), backgroundColor:'#dc2626', borderRadius:3}
       ]
     }, options: defOpts});
   }
 
-  const slotsOf = (s, key) => s.hours
-    .filter(h => Number(h[key] || 0) > 0)
+  const slotsOf = s => s.hours
+    .filter(h => Number(h.not_accepted || 0) > 0)
     .sort((a, b) => Number(a.hour_local) - Number(b.hour_local))
-    .map(h => `${hourLabel(h.hour_local)} (${fmt(h[key])})`)
+    .map(h => `${hourLabel(h.hour_local)} (${fmt(h.not_accepted)})`)
     .join(', ') || '—';
 
   const storeTbl = document.getElementById('e-store-table');
   if (storeTbl) {
-    let html = '<thead><tr><th>#</th><th>Локація</th><th>Місто</th><th>Слоти, де не прийняли</th><th>Слоти втрачених</th><th>Не прийнято</th><th>Втрачено</th><th>Розміщено</th><th>Fail %</th></tr></thead><tbody>';
+    let html = '<thead><tr><th>#</th><th>Локація</th><th>Місто</th><th>Слоти, де не прийняли</th><th>Не прийнято</th></tr></thead><tbody>';
     if (!stores.length) {
-      html += '<tr><td colspan="9">У вечірні години втрачених замовлень не було.</td></tr>';
+      html += '<tr><td colspan="5">У вечірні години заклад не ігнорував прийняття замовлень.</td></tr>';
     }
     stores.forEach((s, i) => {
-      const color = s.failPct >= 80 ? 'var(--red)' : s.failPct >= 50 ? 'var(--orange)' : 'var(--yellow)';
       html += `<tr><td>${i + 1}</td><td>${s.store}</td><td>${s.city}</td>`
-        + `<td>${slotsOf(s, 'not_accepted')}</td><td>${slotsOf(s, 'failed')}</td>`
-        + `<td><b>${fmt(s.notAccepted)}</b></td><td>${fmt(s.failed)}</td><td>${fmt(s.placed)}</td>`
-        + `<td style="color:${color};font-weight:700">${pct(s.failPct)}</td></tr>`;
+        + `<td>${slotsOf(s)}</td><td style="color:var(--red);font-weight:700">${fmt(s.notAccepted)}</td></tr>`;
     });
     html += '</tbody>';
     storeTbl.innerHTML = html;
@@ -1263,23 +1244,20 @@ if (wData.length) {
   if (slotTbl) {
     let html = '<thead><tr><th>#</th><th>Локація</th><th>Місто</th>';
     for (const h of hoursPresent) html += `<th class="week">${hourLabel(h)}</th>`;
-    html += '<th>Не прийнято</th><th>Втрачено</th></tr></thead><tbody>';
+    html += '<th>Не прийнято</th></tr></thead><tbody>';
+    if (!stores.length) html += '<tr><td colspan="4">Немає локацій.</td></tr>';
     stores.forEach((s, i) => {
       html += `<tr><td class="rank">${i + 1}</td><td class="store" title="${s.store}">${s.store}</td><td>${s.city}</td>`;
       for (const h of hoursPresent) {
         const cell = s.hours.find(x => Number(x.hour_local) === h);
-        if (!cell || Number(cell.placed) === 0) {
+        const na = cell ? Number(cell.not_accepted || 0) : 0;
+        if (!na) {
           html += '<td>—</td>';
           continue;
         }
-        const failed = Number(cell.failed || 0);
-        const na = Number(cell.not_accepted || 0);
-        const bg = na > 0 ? '#fee2e2' : failed > 0 ? '#ffedd5' : '#dcfce7';
-        const fg = na > 0 ? '#991b1b' : failed > 0 ? '#9a3412' : '#166534';
-        html += `<td><span class="heat" style="background:${bg};color:${fg}">${fmt(failed)}/${fmt(cell.placed)}</span>`
-          + `<div class="me">${na ? 'не пр. ' + fmt(na) : failed ? 'інша причина' : 'доставлено'}</div></td>`;
+        html += `<td><span class="heat" style="background:#fee2e2;color:#991b1b">${fmt(na)}</span></td>`;
       }
-      html += `<td><b>${fmt(s.notAccepted)}</b></td><td>${fmt(s.failed)}</td></tr>`;
+      html += `<td><b>${fmt(s.notAccepted)}</b></td></tr>`;
     });
     html += '</tbody>';
     slotTbl.innerHTML = html;
