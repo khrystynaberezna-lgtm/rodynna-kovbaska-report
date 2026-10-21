@@ -1208,7 +1208,7 @@ if (wData.length) {
 
   const kpis = [
     {label: 'Локацій із втратами', value: String(stores.length), color: stores.length ? 'var(--red)' : 'var(--green)'},
-    {label: 'Не прийняли жодного', value: String(notStores), sub: 'була відповідь «не відповів»', color: notStores ? 'var(--red)' : 'var(--green)'},
+    {label: 'Локацій без відповіді', value: String(notStores), sub: 'хоча б одне «не відповів»', color: notStores ? 'var(--red)' : 'var(--green)'},
     {label: 'Не прийнято замовлень', value: fmt(notAll), sub: `із ${fmt(failedAll)} втрачених`, color: 'var(--orange)'},
     {label: 'Втрачені з ' + hourLabel(fromHour), value: fmt(failedAll), sub: `із ${fmt(placedAll)} розміщених · ${placedAll ? pct(failedAll / placedAll * 100) : '—'}`, color: 'var(--red)'},
   ];
