@@ -158,6 +158,9 @@ DATA_END = _data_end()
 WEEKLY_START, WEEKLY_END = _week_boundaries()
 LAST_MONTH_START = DATA_END[:8] + "01"
 LAST_MONTH_END = DATA_END
+# Вечірня вкладка: закритий місяць + поточний місяць по сьогодні.
+EVENING_END = datetime.now().date().isoformat()
+EVENING_CURRENT_MONTH = EVENING_END[:7]
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +458,8 @@ EVENING_BY_STORE_HOUR_LAST_MONTH = f"""
 SELECT
     COALESCE(f.provider_name, p.provider_name) AS store,
     COALESCE(f.city_name, p.city_name) AS city,
+    DATE_FORMAT(f.order_created_date, 'yyyy-MM') AS period,
+    DATE_FORMAT(f.order_created_date, 'yyyy-MM-dd') AS order_date,
     HOUR(f.order_created_at_local) AS hour_local,
     COUNT(DISTINCT f.order_id) AS not_accepted
 FROM main.ng_delivery.fact_order_delivery f
@@ -463,13 +468,13 @@ FROM main.ng_delivery.fact_order_delivery f
 WHERE p.country_code = 'ua'
   AND {GROUP_FILTER}
   AND f.order_created_date >= '{LAST_MONTH_START}'
-  AND f.order_created_date <= '{LAST_MONTH_END}'
+  AND f.order_created_date <= '{EVENING_END}'
   AND HOUR(f.order_created_at_local) >= {EVENING_FROM_HOUR}
   AND f.order_state != 'delivered'
   AND r.reason = 'did_not_respond'
   AND r.actor_type = 'provider'
-GROUP BY 1, 2, 3
-ORDER BY not_accepted DESC, hour_local
+GROUP BY 1, 2, 3, 4, 5
+ORDER BY period, order_date, hour_local
 LIMIT 500
 """
 
@@ -747,9 +752,10 @@ def main():
         },
         "evening": {
             "from_hour": EVENING_FROM_HOUR,
-            "period": LAST_MONTH_START[:7],
+            "months": [LAST_MONTH_START[:7], EVENING_CURRENT_MONTH],
             "period_start": LAST_MONTH_START,
-            "period_end": LAST_MONTH_END,
+            "period_end": EVENING_END,
+            "closed_month_end": LAST_MONTH_END,
             "by_store_hour": evening_by_store_hour,
         },
         "network": {

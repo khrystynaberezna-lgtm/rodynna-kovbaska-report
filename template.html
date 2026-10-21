@@ -324,14 +324,8 @@ tr:hover{background:#f9fafb}
     <div class="card" style="overflow-x:auto"><table id="e-store-table"></table></div>
   </div>
 
-  <div class="divider"></div>
-
-  <div class="section">
-    <h2>Слоти по локаціях</h2>
-    <div class="card" style="overflow-x:auto"><table class="act-table" id="e-slot-table"></table></div>
-    <div class="insight" style="margin-top:12px">
-      <div class="insight-text">Число в комірці — скільки замовлень у цей слот заклад не прийняв: не відповів на планшет. Скасування клієнтом, відсутність товару та інші причини тут не показані.</div>
-    </div>
+  <div class="insight" style="margin-top:12px">
+    <div class="insight-text">Під кількістю — дні, коли заклад не відповів на планшет, і година слота. Жовтень пораховано по сьогодні, місяць ще не закритий.</div>
   </div>
 
 </div><!-- end evening tab -->
@@ -1159,47 +1153,62 @@ if (wData.length) {
   document.getElementById('a-table').innerHTML = html;
 })();
 
-// ─── Evening tab: provider did not accept (did_not_respond) from 17:00 ───
+// ─── Evening tab: ignored acceptance, closed month + current month ───
 {
   const ev = D.evening || {};
   const rows = (ev.by_store_hour || []).filter(r => Number(r.not_accepted || 0) > 0);
   const fromHour = Number(ev.from_hour || 17);
-  const periodLabel = ev.period ? shortMonth(ev.period) : 'останній місяць';
-  const title = document.getElementById('e-title');
-  if (title) title.textContent = `Вечірні години — локації, які не приймають замовлення · ${periodLabel}`;
-
+  const months = (ev.months && ev.months.length) ? ev.months : [...new Set(rows.map(r => r.period))].sort();
+  const monthName = {
+    '01':'Січень','02':'Лютий','03':'Березень','04':'Квітень','05':'Травень','06':'Червень',
+    '07':'Липень','08':'Серпень','09':'Вересень','10':'Жовтень','11':'Листопад','12':'Грудень'
+  };
+  const monthTitle = period => monthName[(period || '').slice(5, 7)] || period;
   const hourLabel = h => String(h).padStart(2, '0') + ':00';
+  const dayLabel = iso => {
+    const p = String(iso || '').slice(0, 10).split('-');
+    return p.length === 3 ? `${p[2]}.${p[1]}` : iso;
+  };
+  const currentMonth = months[months.length - 1];
+  const endLabel = ev.period_end ? dayLabel(ev.period_end) : '';
+
+  const title = document.getElementById('e-title');
+  if (title) title.textContent = `Вечірні години — ${months.map(monthTitle).join(' і ')}`;
+
   const byStore = new Map();
   for (const r of rows) {
     const key = (r.store || '—') + '|' + (r.city || '');
-    if (!byStore.has(key)) byStore.set(key, {store: r.store || '—', city: r.city || '—', hours: []});
-    byStore.get(key).hours.push(r);
+    if (!byStore.has(key)) byStore.set(key, {store: r.store || '—', city: r.city || '—', byPeriod: {}});
+    const bucket = byStore.get(key).byPeriod;
+    if (!bucket[r.period]) bucket[r.period] = [];
+    bucket[r.period].push(r);
   }
-  const stores = [...byStore.values()].map(s => {
-    s.notAccepted = s.hours.reduce((a, h) => a + Number(h.not_accepted || 0), 0);
-    return s;
-  }).sort((a, b) => b.notAccepted - a.notAccepted || a.store.localeCompare(b.store, 'uk'));
-
-  const hoursPresent = [...new Set(rows.map(r => Number(r.hour_local)))].sort((a, b) => a - b);
-  const notAll = stores.reduce((a, s) => a + s.notAccepted, 0);
+  const countOf = (s, period) => (s.byPeriod[period] || []).reduce((a, r) => a + Number(r.not_accepted || 0), 0);
+  const stores = [...byStore.values()].sort((a, b) =>
+    countOf(b, currentMonth) - countOf(a, currentMonth)
+    || countOf(b, months[0]) - countOf(a, months[0])
+    || a.store.localeCompare(b.store, 'uk'));
 
   const note = document.getElementById('e-note');
   if (note) {
-    const slotTxt = hoursPresent.length ? hoursPresent.map(hourLabel).join(', ') : 'таких слотів не було';
-    note.innerHTML = `<b>Вечірній слот</b> — з ${hourLabel(fromHour)} локального часу за ${periodLabel}. `
-      + `Тут лише замовлення, які заклад не прийняв: не відповів на планшет (did not respond, сторона закладу). `
-      + `Слоти, де це сталось: <b>${slotTxt}</b>. `
-      + `Скасування клієнтом, відсутність товару та інші причини дивіться у вкладці «Невдалі замовлення».`;
+    note.innerHTML = `<b>Вечірній слот</b> — з ${hourLabel(fromHour)} локального часу. `
+      + `У таблиці лише замовлення, які заклад не прийняв на планшеті. `
+      + `Під кількістю — день і година. ${monthTitle(currentMonth)} пораховано по ${endLabel}, місяць ще відкритий.`;
   }
 
-  const kpis = [
-    {label: 'Локацій, що ігнорували планшет', value: String(stores.length), color: stores.length ? 'var(--red)' : 'var(--green)'},
-    {label: 'Не прийнято замовлень', value: fmt(notAll), sub: 'заклад не відповів', color: notAll ? 'var(--red)' : 'var(--green)'},
-    {label: 'Слотів із ігноруванням', value: String(hoursPresent.length), sub: hoursPresent.length ? hoursPresent.map(hourLabel).join(', ') : 'немає', color: hoursPresent.length ? 'var(--orange)' : 'var(--green)'},
-  ];
+  const kpis = months.flatMap(period => {
+    const list = rows.filter(r => r.period === period);
+    const orders = list.reduce((a, r) => a + Number(r.not_accepted || 0), 0);
+    const locs = new Set(list.map(r => (r.store || '') + '|' + (r.city || ''))).size;
+    const sub = period === currentMonth && endLabel ? `по ${endLabel}` : 'повний місяць';
+    return [
+      {label: `${monthTitle(period)} · локацій`, value: String(locs), sub, color: locs ? 'var(--red)' : 'var(--green)'},
+      {label: `${monthTitle(period)} · не прийнято`, value: fmt(orders), sub: 'заклад не відповів', color: orders ? 'var(--red)' : 'var(--green)'},
+    ];
+  });
   const kpiHost = document.getElementById('e-kpi-cards');
   if (kpiHost) {
-    kpiHost.className = 'grid-3';
+    kpiHost.className = kpis.length > 2 ? 'grid-4' : 'grid-2';
     kpiHost.innerHTML = kpis.map(k =>
       `<div class="card kpi"><div class="kpi-label">${k.label}</div>`
       + `<div class="kpi-value" style="color:${k.color}">${k.value}</div>`
@@ -1207,60 +1216,65 @@ if (wData.length) {
     ).join('');
   }
 
+  const hoursPresent = [...new Set(rows.map(r => Number(r.hour_local)))].sort((a, b) => a - b);
+  const chartColors = ['#ea580c', '#dc2626', '#7c3aed'];
   const chartTitle = document.getElementById('e-chart-title');
-  if (chartTitle) chartTitle.textContent = `Не прийняті закладом за годиною · ${periodLabel}`;
+  if (chartTitle) chartTitle.textContent = `Не прийняті закладом за годиною · ${months.map(monthTitle).join(' і ')}`;
   const hourCanvas = document.getElementById('e-cHour');
   if (hourCanvas && hoursPresent.length) {
-    const byHour = h => rows.filter(r => Number(r.hour_local) === h);
     new Chart(hourCanvas, {type:'bar', data:{
       labels: hoursPresent.map(hourLabel),
-      datasets:[
-        {label:'Не прийнято закладом', data: hoursPresent.map(h => byHour(h).reduce((a,r)=>a+Number(r.not_accepted||0),0)), backgroundColor:'#dc2626', borderRadius:3}
-      ]
+      datasets: months.map((period, i) => ({
+        label: monthTitle(period),
+        data: hoursPresent.map(h => rows
+          .filter(r => r.period === period && Number(r.hour_local) === h)
+          .reduce((a, r) => a + Number(r.not_accepted || 0), 0)),
+        backgroundColor: chartColors[i % chartColors.length],
+        borderRadius: 3
+      }))
     }, options: defOpts});
   }
 
-  const slotsOf = s => s.hours
-    .filter(h => Number(h.not_accepted || 0) > 0)
-    .sort((a, b) => Number(a.hour_local) - Number(b.hour_local))
-    .map(h => `${hourLabel(h.hour_local)} (${fmt(h.not_accepted)})`)
-    .join(', ') || '—';
+  const monthCell = events => {
+    if (!events || !events.length) return '<td style="vertical-align:top">—</td>';
+    const total = events.reduce((a, r) => a + Number(r.not_accepted || 0), 0);
+    const byDate = new Map();
+    for (const r of events) {
+      const key = String(r.order_date || '').slice(0, 10);
+      if (!byDate.has(key)) byDate.set(key, []);
+      byDate.get(key).push(r);
+    }
+    const lines = [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, items]) => {
+      const hours = items
+        .sort((a, b) => Number(a.hour_local) - Number(b.hour_local))
+        .map(it => {
+          const n = Number(it.not_accepted || 0);
+          return n > 1 ? `${hourLabel(it.hour_local)} ×${n}` : hourLabel(it.hour_local);
+        });
+      return `${dayLabel(date)} · ${hours.join(', ')}`;
+    });
+    return `<td style="vertical-align:top"><div style="font-weight:700;color:var(--red);font-size:16px">${fmt(total)}</div>`
+      + `<div class="me" style="font-style:normal;font-size:11px;line-height:1.45">${lines.join('<br>')}</div></td>`;
+  };
 
   const storeTbl = document.getElementById('e-store-table');
   if (storeTbl) {
-    let html = '<thead><tr><th>#</th><th>Локація</th><th>Місто</th><th>Слоти, де не прийняли</th><th>Не прийнято</th></tr></thead><tbody>';
+    let html = '<thead><tr><th>#</th><th>Локація</th><th>Місто</th>';
+    for (const period of months) {
+      const hint = period === currentMonth && endLabel ? `по ${endLabel}` : 'повний місяць';
+      html += `<th>${monthTitle(period)}<span class="me">${hint}</span></th>`;
+    }
+    html += '</tr></thead><tbody>';
     if (!stores.length) {
-      html += '<tr><td colspan="5">У вечірні години заклад не ігнорував прийняття замовлень.</td></tr>';
+      html += `<tr><td colspan="${3 + months.length}">У вечірні години заклад не ігнорував прийняття замовлень.</td></tr>`;
     }
     stores.forEach((s, i) => {
-      html += `<tr><td>${i + 1}</td><td>${s.store}</td><td>${s.city}</td>`
-        + `<td>${slotsOf(s)}</td><td style="color:var(--red);font-weight:700">${fmt(s.notAccepted)}</td></tr>`;
+      html += `<tr><td>${i + 1}</td><td>${s.store}</td><td>${s.city}</td>`;
+      for (const period of months) html += monthCell(s.byPeriod[period]);
+      html += '</tr>';
     });
     html += '</tbody>';
     storeTbl.innerHTML = html;
-  }
-
-  const slotTbl = document.getElementById('e-slot-table');
-  if (slotTbl) {
-    let html = '<thead><tr><th>#</th><th>Локація</th><th>Місто</th>';
-    for (const h of hoursPresent) html += `<th class="week">${hourLabel(h)}</th>`;
-    html += '<th>Не прийнято</th></tr></thead><tbody>';
-    if (!stores.length) html += '<tr><td colspan="4">Немає локацій.</td></tr>';
-    stores.forEach((s, i) => {
-      html += `<tr><td class="rank">${i + 1}</td><td class="store" title="${s.store}">${s.store}</td><td>${s.city}</td>`;
-      for (const h of hoursPresent) {
-        const cell = s.hours.find(x => Number(x.hour_local) === h);
-        const na = cell ? Number(cell.not_accepted || 0) : 0;
-        if (!na) {
-          html += '<td>—</td>';
-          continue;
-        }
-        html += `<td><span class="heat" style="background:#fee2e2;color:#991b1b">${fmt(na)}</span></td>`;
-      }
-      html += `<td><b>${fmt(s.notAccepted)}</b></td></tr>`;
-    });
-    html += '</tbody>';
-    slotTbl.innerHTML = html;
   }
 }
 </script>
