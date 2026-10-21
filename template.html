@@ -313,13 +313,6 @@ tr:hover{background:#f9fafb}
   <div class="divider"></div>
 
   <div class="section">
-    <h2>Години, коли заклад не відповів</h2>
-    <div class="card"><h3 id="e-chart-title">Не прийняті закладом за годиною</h3><div class="chart-box"><canvas id="e-cHour"></canvas></div></div>
-  </div>
-
-  <div class="divider"></div>
-
-  <div class="section">
     <h2>Перелік локацій</h2>
     <div class="card" style="overflow-x:auto"><table id="e-store-table"></table></div>
   </div>
@@ -1214,25 +1207,6 @@ if (wData.length) {
       + `<div class="kpi-value" style="color:${k.color}">${k.value}</div>`
       + `<div class="kpi-sub stable">${k.sub || ''}</div></div>`
     ).join('');
-  }
-
-  const hoursPresent = [...new Set(rows.map(r => Number(r.hour_local)))].sort((a, b) => a - b);
-  const chartColors = ['#ea580c', '#dc2626', '#7c3aed'];
-  const chartTitle = document.getElementById('e-chart-title');
-  if (chartTitle) chartTitle.textContent = `Не прийняті закладом за годиною · ${months.map(monthTitle).join(' і ')}`;
-  const hourCanvas = document.getElementById('e-cHour');
-  if (hourCanvas && hoursPresent.length) {
-    new Chart(hourCanvas, {type:'bar', data:{
-      labels: hoursPresent.map(hourLabel),
-      datasets: months.map((period, i) => ({
-        label: monthTitle(period),
-        data: hoursPresent.map(h => rows
-          .filter(r => r.period === period && Number(r.hour_local) === h)
-          .reduce((a, r) => a + Number(r.not_accepted || 0), 0)),
-        backgroundColor: chartColors[i % chartColors.length],
-        borderRadius: 3
-      }))
-    }, options: defOpts});
   }
 
   const monthCell = events => {
